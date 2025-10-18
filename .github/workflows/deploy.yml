@@ -47,8 +47,8 @@ jobs:
           php artisan view:cache || true
 
       # Готовим артефакт:
-      #  - core (всё КРОМЕ папки public) — поедет в FTP_DIR/
-      #  - public (содержимое public)    — поедет в FTP_DIR/public_html/
+      #  - core (всё КРОМЕ public) → FTP_DIR/
+      #  - public (содержимое public) → FTP_DIR/public_html/
       - name: Prepare artifact
         run: |
           mkdir -p build/core build/public
@@ -63,21 +63,29 @@ jobs:
           password: ${{ secrets.FTP_PASS }}
           local-dir: build/core/
           server-dir: ${{ secrets.FTP_DIR }}/
+          protocol: ftps
+          port: 21
+          exclude: |
+            **/.git*
+            **/.github/**
+            **/node_modules/**
 
       - name: Upload public → FTP_DIR/public_html/
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-            server: ${{ secrets.FTP_HOST }}
-            username: ${{ secrets.FTP_USER }}
-            password: ${{ secrets.FTP_PASS }}
-            local-dir: build/public/
-            server-dir: ${{ secrets.FTP_DIR }}/public_html/
-            exclude: |
-              link/**
-              shop/**
-              .well-known/**
-  
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASS }}
+          local-dir: build/public/
+          server-dir: ${{ secrets.FTP_DIR }}/public_html/
+          protocol: ftps
+          port: 21
+          exclude: |
+            link/**
+            shop/**
+            .well-known/**
 
       - name: Run deploy hook (migrate/cache)
         run: |
           curl -fsS "${{ secrets.APP_URL }}/_deploy/hook?key=${{ secrets.DEPLOY_HOOK_KEY }}"
+
