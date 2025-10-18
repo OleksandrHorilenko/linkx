@@ -47,45 +47,62 @@ jobs:
           php artisan view:cache || true
 
       # Готовим артефакт:
-      #  - core (всё КРОМЕ public) → FTP_DIR/
-      #  - public (содержимое public) → FTP_DIR/public_html/
       - name: Prepare artifact
         run: |
           mkdir -p build/core build/public
           rsync -a --delete --exclude=public --exclude=.git --exclude=.github ./ build/core/
           rsync -a --delete ./public/ build/public/
 
-      - name: Upload core → FTP_DIR/
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USER }}
-          password: ${{ secrets.FTP_PASS }}
-          local-dir: build/core/
-          server-dir: ${{ secrets.FTP_DIR }}/
-          protocol: ftps
-          port: 21
-          exclude: |
-            **/.git*
-            **/.github/**
-            **/node_modules/**
+      # ---- Загрузки через FTPS (lftp) ----
+      - name: Install lftp
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lftp
 
-      - name: Upload public → FTP_DIR/public_html/
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USER }}
-          password: ${{ secrets.FTP_PASS }}
-          local-dir: build/public/
-          server-dir: ${{ secrets.FTP_DIR }}/public_html/
-          protocol: ftps
-          port: 21
-          exclude: |
-            link/**
-            shop/**
-            .well-known/**
+      - name: Upload core via FTPS (lftp) → ${{ secrets.FTP_DIR }}/
+        env:
+          HOST: ${{ secrets.FTP_HOST }}
+          USER: ${{ secrets.FTP_USER }}
+          PASS: ${{ secrets.FTP_PASS }}
+          REMOTE: ${{ secrets.FTP_DIR }}
+        run: |
+          lftp -u "$USER","$PASS" -e "
+            set ftp:ssl-force true;
+            set ftp:ssl-protect-data true;
+            set ftp:passive-mode true;
+            set ssl:verify-certificate no;
+            set net:max-retries 3;
+            set net:timeout 30;
+            mirror -R --delete \
+              --exclude-glob .git* \
+              --exclude-glob .github/* \
+              --exclude-glob node_modules/* \
+              build/core/ $REMOTE/;
+            quit
+          " "ftps://$HOST:21"
+
+      - name: Upload public via FTPS (lftp) → ${{ secrets.FTP_DIR }}/public_html/
+        env:
+          HOST: ${{ secrets.FTP_HOST }}
+          USER: ${{ secrets.FTP_USER }}
+          PASS: ${{ secrets.FTP_PASS }}
+          REMOTE: ${{ secrets.FTP_DIR }}/public_html
+        run: |
+          lftp -u "$USER","$PASS" -e "
+            set ftp:ssl-force true;
+            set ftp:ssl-protect-data true;
+            set ftp:passive-mode true;
+            set ssl:verify-certificate no;
+            set net:max-retries 3;
+            set net:timeout 30;
+            mirror -R --delete \
+              --exclude-glob link/* \
+              --exclude-glob shop/* \
+              --exclude-glob .well-known/* \
+              build/public/ $REMOTE/;
+            quit
+          " "ftps://$HOST:21"
 
       - name: Run deploy hook (migrate/cache)
         run: |
           curl -fsS "${{ secrets.APP_URL }}/_deploy/hook?key=${{ secrets.DEPLOY_HOOK_KEY }}"
-
