@@ -1,0 +1,78 @@
+name: Deploy (Shared Hosting)
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          tools: composer
+          extensions: mbstring, pdo_mysql, curl, zip
+
+      - name: Create .env
+        run: |
+          cat > .env <<'EOF'
+          APP_NAME=LinkX
+          APP_ENV=production
+          APP_KEY=${{ secrets.APP_KEY }}
+          APP_DEBUG=false
+          APP_URL=${{ secrets.APP_URL }}
+
+          DB_CONNECTION=mysql
+          DB_HOST=${{ secrets.DB_HOST }}
+          DB_PORT=3306
+          DB_DATABASE=${{ secrets.DB_DATABASE }}
+          DB_USERNAME=${{ secrets.DB_USERNAME }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+
+          CACHE_DRIVER=file
+          SESSION_DRIVER=file
+          QUEUE_CONNECTION=database
+          DEPLOY_HOOK_KEY=${{ secrets.DEPLOY_HOOK_KEY }}
+          EOF
+
+      - name: Install deps (no-dev) & optimize
+        run: |
+          composer install --no-dev --prefer-dist --optimize-autoloader
+          php artisan config:cache || true
+          php artisan route:cache || true
+          php artisan view:cache || true
+
+      # Готовим артефакт:
+      #  - core (всё КРОМЕ папки public) — поедет в FTP_DIR/
+      #  - public (содержимое public)    — поедет в FTP_DIR/public_html/
+      - name: Prepare artifact
+        run: |
+          mkdir -p build/core build/public
+          rsync -a --delete --exclude=public --exclude=.git --exclude=.github ./ build/core/
+          rsync -a --delete ./public/ build/public/
+
+      - name: Upload core → FTP_DIR/
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASS }}
+          local-dir: build/core/
+          server-dir: ${{ secrets.FTP_DIR }}/
+
+      - name: Upload public → FTP_DIR/public_html/
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASS }}
+          local-dir: build/public/
+          server-dir: ${{ secrets.FTP_DIR }}/public_html/
+
+      - name: Run deploy hook (migrate/cache)
+        run: |
+          curl -fsS "${{ secrets.APP_URL }}/_deploy/hook?key=${{ secrets.DEPLOY_HOOK_KEY }}"
