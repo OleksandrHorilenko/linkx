@@ -67,11 +67,16 @@ jobs:
       - name: Upload public → FTP_DIR/public_html/
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USER }}
-          password: ${{ secrets.FTP_PASS }}
-          local-dir: build/public/
-          server-dir: ${{ secrets.FTP_DIR }}/public_html/
+            server: ${{ secrets.FTP_HOST }}
+            username: ${{ secrets.FTP_USER }}
+            password: ${{ secrets.FTP_PASS }}
+            local-dir: build/public/
+            server-dir: ${{ secrets.FTP_DIR }}/public_html/
+            exclude: |
+              link/**
+              shop/**
+              .well-known/**
+  
 
       - name: Run deploy hook (migrate/cache)
         run: |
