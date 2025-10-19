@@ -46,22 +46,37 @@ jobs:
           php artisan route:cache || true
           php artisan view:cache || true
 
-      # Собираем артефакты
       - name: Prepare artifact
         run: |
           mkdir -p build/core build/public
           rsync -a --delete --exclude=public --exclude=.git --exclude=.github ./ build/core/
           rsync -a --delete ./public/ build/public/
 
-      # ---- Загрузка через обычный FTP (lftp) + ОТНОСИТЕЛЬНЫЕ пути ----
-      # Корень FTP-аккаунта у тебя: /home/aless376/
-      # Значит путь до домена относительно корня: domains/webkuznia.pro
       - name: Install lftp
         run: |
           sudo apt-get update
           sudo apt-get install -y lftp
 
-      - name: Upload core via FTP → domains/webkuznia.pro/
+      # ---- Диагностика соединения (IPv4, пассивный) ----
+      - name: Test FTP connectivity (IPv4)
+        env:
+          HOST: ${{ secrets.FTP_HOST }}
+          USER: ${{ secrets.FTP_USER }}
+          PASS: ${{ secrets.FTP_PASS }}
+        run: |
+          set -x
+          lftp -d -u "$USER","$PASS" -e "
+            set dns:order \"inet\";           # IPv4
+            set ftp:ssl-allow no;             # обычный FTP (без TLS)
+            set ftp:passive-mode true;        # пассивный режим
+            set net:max-retries 1;
+            set net:timeout 25;
+            pwd; ls -la;
+            bye
+          " "ftp://$HOST:21"
+
+      # ---- Загрузка ядра ----
+      - name: Upload core via FTP (IPv4) → domains/webkuznia.pro/
         env:
           HOST: ${{ secrets.FTP_HOST }}
           USER: ${{ secrets.FTP_USER }}
@@ -69,6 +84,7 @@ jobs:
           REMOTE: domains/webkuznia.pro
         run: |
           lftp -u "$USER","$PASS" -e "
+            set dns:order \"inet\";
             set ftp:ssl-allow no;
             set ftp:passive-mode true;
             set net:max-retries 3;
@@ -81,7 +97,8 @@ jobs:
             bye
           " "ftp://$HOST:21"
 
-      - name: Upload public via FTP → domains/webkuznia.pro/public_html/
+      # ---- Загрузка public ----
+      - name: Upload public via FTP (IPv4) → domains/webkuznia.pro/public_html/
         env:
           HOST: ${{ secrets.FTP_HOST }}
           USER: ${{ secrets.FTP_USER }}
@@ -89,6 +106,7 @@ jobs:
           REMOTE: domains/webkuznia.pro/public_html
         run: |
           lftp -u "$USER","$PASS" -e "
+            set dns:order \"inet\";
             set ftp:ssl-allow no;
             set ftp:passive-mode true;
             set net:max-retries 3;
