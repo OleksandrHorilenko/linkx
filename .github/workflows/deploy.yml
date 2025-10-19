@@ -57,26 +57,37 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y lftp
 
-      # Диагностика: проверим логин и листинг корня FTP
-      - name: Test FTP connectivity
+      # --- Диагностика: сначала пробуем FTPS, при неудаче падаем на обычный FTP ---
+      - name: Test FTP connectivity (FTPS -> FTP)
         env:
           HOST: ${{ secrets.FTP_HOST }}
           USER: ${{ secrets.FTP_USER }}
           PASS: ${{ secrets.FTP_PASS }}
         run: |
-          set -x
+          set -e
+          echo "Try FTPS (TLS)..."
           lftp -d -u "$USER","$PASS" -e "
-            set ftp:ssl-allow no;          # обычный FTP
-            set ftp:passive-mode true;     # пассивный
-            set ftp:use-pret true;         # для NAT/прокси-сетей
-            set ftp:prefer-epsv false;     # избегаем EPSV (бывает глючит)
-            set net:max-retries 1;
-            set net:timeout 25;
-            pwd; ls -la;
-            bye
-          " "ftp://$HOST:21"
+            set ssl:verify-certificate no;
+            set ftp:ssl-force true;
+            set ftp:ssl-protect-data true;
+            set ftp:passive-mode true;
+            set ftp:use-pret true;
+            set ftp:prefer-epsv false;
+            set net:max-retries 1; set net:timeout 25;
+            pwd; ls -la; bye
+          " "ftps://$HOST:21" || {
+            echo "FTPS failed, try plain FTP...";
+            lftp -d -u "$USER","$PASS" -e "
+              set ftp:ssl-allow no;
+              set ftp:passive-mode true;
+              set ftp:use-pret true;
+              set ftp:prefer-epsv false;
+              set net:max-retries 1; set net:timeout 25;
+              pwd; ls -la; bye
+            " "ftp://$HOST:21";
+          }
 
-      - name: Upload core via FTP → domains/webkuznia.pro/
+      - name: Upload core (FTPS -> FTP) → domains/webkuznia.pro/
         env:
           HOST: ${{ secrets.FTP_HOST }}
           USER: ${{ secrets.FTP_USER }}
@@ -84,12 +95,26 @@ jobs:
           REMOTE: domains/webkuznia.pro
         run: |
           lftp -u "$USER","$PASS" -e "
+            set ssl:verify-certificate no;
+            set ftp:ssl-force true;
+            set ftp:ssl-protect-data true;
+            set ftp:passive-mode true;
+            set ftp:use-pret true;
+            set ftp:prefer-epsv false;
+            set net:max-retries 2; set net:timeout 40;
+            mirror -R --delete \
+              --exclude-glob .git* \
+              --exclude-glob .github/* \
+              --exclude-glob node_modules/* \
+              build/core/ $REMOTE/;
+            bye
+          " "ftps://$HOST:21" || \
+          lftp -u "$USER","$PASS" -e "
             set ftp:ssl-allow no;
             set ftp:passive-mode true;
             set ftp:use-pret true;
             set ftp:prefer-epsv false;
-            set net:max-retries 3;
-            set net:timeout 40;
+            set net:max-retries 2; set net:timeout 40;
             mirror -R --delete \
               --exclude-glob .git* \
               --exclude-glob .github/* \
@@ -98,7 +123,7 @@ jobs:
             bye
           " "ftp://$HOST:21"
 
-      - name: Upload public via FTP → domains/webkuznia.pro/public_html/
+      - name: Upload public (FTPS -> FTP) → domains/webkuznia.pro/public_html/
         env:
           HOST: ${{ secrets.FTP_HOST }}
           USER: ${{ secrets.FTP_USER }}
@@ -106,12 +131,26 @@ jobs:
           REMOTE: domains/webkuznia.pro/public_html
         run: |
           lftp -u "$USER","$PASS" -e "
+            set ssl:verify-certificate no;
+            set ftp:ssl-force true;
+            set ftp:ssl-protect-data true;
+            set ftp:passive-mode true;
+            set ftp:use-pret true;
+            set ftp:prefer-epsv false;
+            set net:max-retries 2; set net:timeout 40;
+            mirror -R --delete \
+              --exclude-glob link/* \
+              --exclude-glob shop/* \
+              --exclude-glob .well-known/* \
+              build/public/ $REMOTE/;
+            bye
+          " "ftps://$HOST:21" || \
+          lftp -u "$USER","$PASS" -e "
             set ftp:ssl-allow no;
             set ftp:passive-mode true;
             set ftp:use-pret true;
             set ftp:prefer-epsv false;
-            set net:max-retries 3;
-            set net:timeout 40;
+            set net:max-retries 2; set net:timeout 40;
             mirror -R --delete \
               --exclude-glob link/* \
               --exclude-glob shop/* \
