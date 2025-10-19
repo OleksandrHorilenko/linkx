@@ -57,8 +57,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y lftp
 
-      # ---- Диагностика соединения (IPv4, пассивный) ----
-      - name: Test FTP connectivity (IPv4)
+      # Диагностика: проверим логин и листинг корня FTP
+      - name: Test FTP connectivity
         env:
           HOST: ${{ secrets.FTP_HOST }}
           USER: ${{ secrets.FTP_USER }}
@@ -66,17 +66,17 @@ jobs:
         run: |
           set -x
           lftp -d -u "$USER","$PASS" -e "
-            set dns:order \"inet\";           # IPv4
-            set ftp:ssl-allow no;             # обычный FTP (без TLS)
-            set ftp:passive-mode true;        # пассивный режим
+            set ftp:ssl-allow no;          # обычный FTP
+            set ftp:passive-mode true;     # пассивный
+            set ftp:use-pret true;         # для NAT/прокси-сетей
+            set ftp:prefer-epsv false;     # избегаем EPSV (бывает глючит)
             set net:max-retries 1;
             set net:timeout 25;
             pwd; ls -la;
             bye
           " "ftp://$HOST:21"
 
-      # ---- Загрузка ядра ----
-      - name: Upload core via FTP (IPv4) → domains/webkuznia.pro/
+      - name: Upload core via FTP → domains/webkuznia.pro/
         env:
           HOST: ${{ secrets.FTP_HOST }}
           USER: ${{ secrets.FTP_USER }}
@@ -84,9 +84,10 @@ jobs:
           REMOTE: domains/webkuznia.pro
         run: |
           lftp -u "$USER","$PASS" -e "
-            set dns:order \"inet\";
             set ftp:ssl-allow no;
             set ftp:passive-mode true;
+            set ftp:use-pret true;
+            set ftp:prefer-epsv false;
             set net:max-retries 3;
             set net:timeout 40;
             mirror -R --delete \
@@ -97,8 +98,7 @@ jobs:
             bye
           " "ftp://$HOST:21"
 
-      # ---- Загрузка public ----
-      - name: Upload public via FTP (IPv4) → domains/webkuznia.pro/public_html/
+      - name: Upload public via FTP → domains/webkuznia.pro/public_html/
         env:
           HOST: ${{ secrets.FTP_HOST }}
           USER: ${{ secrets.FTP_USER }}
@@ -106,9 +106,10 @@ jobs:
           REMOTE: domains/webkuznia.pro/public_html
         run: |
           lftp -u "$USER","$PASS" -e "
-            set dns:order \"inet\";
             set ftp:ssl-allow no;
             set ftp:passive-mode true;
+            set ftp:use-pret true;
+            set ftp:prefer-epsv false;
             set net:max-retries 3;
             set net:timeout 40;
             mirror -R --delete \
