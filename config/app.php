@@ -123,4 +123,7 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    // наш ключ для защищённого деплой-хука
+    'deploy_key' => env('DEPLOY_HOOK_KEY', null),
+
 ];
