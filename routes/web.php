@@ -1,3 +1,4 @@
+cat > routes/web.php <<'PHP'
 <?php
 
 use Illuminate\Support\Facades\Route;
@@ -36,3 +37,4 @@ Route::get('/_health', function (\Illuminate\Http\Request $r) {
     }
     return response()->json($info);
 });
+PHP
